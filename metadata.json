@@ -1,0 +1,6 @@
+{
+  "name": "100 Mini Projects You Can Build With AI - Ebook Store",
+  "description": "From Beginner to Builder — 100 practical projects, AI prompts, and complete runnable code for learners and developers. Get instant access for ₹29.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
