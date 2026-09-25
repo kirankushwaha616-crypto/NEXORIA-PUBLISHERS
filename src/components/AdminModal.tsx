@@ -91,9 +91,15 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose, onConfi
         body: JSON.stringify({ secretKey: secretKeyInput.trim() })
       });
 
-      const data = await res.json();
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Not JSON
+      }
+
       if (!res.ok) {
-        throw new Error(data.error || 'Invalid administrator password');
+        throw new Error(data?.error || 'Invalid administrator password or server unreachable');
       }
 
       setToken(data.token);

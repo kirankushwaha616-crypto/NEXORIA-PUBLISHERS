@@ -29,9 +29,35 @@ export default function App() {
   // 1. Fetch server config
   const fetchConfig = () => {
     fetch('/api/config')
-      .then(res => res.json())
-      .then(data => setStoreConfig(data))
-      .catch(err => console.error('Failed to load store config:', err));
+      .then(async res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const contentType = res.headers.get('content-type');
+        if (contentType && !contentType.includes('application/json')) {
+          throw new Error('Non-JSON response from server');
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (data && typeof data === 'object') {
+          setStoreConfig(data);
+        }
+      })
+      .catch(err => {
+        console.warn('Store config fetch notice:', err);
+        // Fallback default config ensures the page never breaks
+        setStoreConfig(prev => prev || {
+          productTitle: '100 Mini Projects You Can Build With AI',
+          productSubtitle: 'From Beginner to Builder — Practical Projects, AI Prompts & Complete Code',
+          price: 9,
+          originalPrice: 299,
+          currency: 'INR',
+          currencySymbol: '₹',
+          isSandbox: false,
+          hasApiKey: true,
+          gatewayBaseUrl: 'https://famgateway.in',
+          supportEmail: 'support@ebooks.local'
+        });
+      });
   };
 
   useEffect(() => {
@@ -51,8 +77,12 @@ export default function App() {
 
     if (orderIdParam) {
       fetch(`/api/orders/${orderIdParam}`)
-        .then(res => {
+        .then(async res => {
           if (!res.ok) throw new Error('Order not found');
+          const contentType = res.headers.get('content-type');
+          if (contentType && !contentType.includes('application/json')) {
+            throw new Error('Non-JSON response from server');
+          }
           return res.json();
         })
         .then((order: Order) => {
@@ -69,7 +99,7 @@ export default function App() {
             setIsPaymentOpen(true);
           }
         })
-        .catch(err => console.error('URL order lookup error:', err));
+        .catch(err => console.warn('URL order lookup notice:', err));
     }
   }, []);
 

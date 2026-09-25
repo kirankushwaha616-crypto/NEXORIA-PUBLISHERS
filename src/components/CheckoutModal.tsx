@@ -60,9 +60,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         })
       });
 
-      const data = await res.json();
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Not JSON
+      }
+
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to create order. Please try again.');
+        throw new Error(data?.error || data?.message || `Server response error (${res.status}). Please try again.`);
       }
 
       onOrderCreated(data.order, data.payment);

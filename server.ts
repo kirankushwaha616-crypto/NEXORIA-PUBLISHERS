@@ -1,7 +1,6 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 import { CONFIG } from './server/config.ts';
 import { db, generateOrderId, generateSecureToken } from './server/db.ts';
 import { paymentService } from './server/payment.ts';
@@ -9,6 +8,22 @@ import { paymentService } from './server/payment.ts';
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const isProduction = process.env.NODE_ENV === 'production';
+
+// URL path normalization for Vercel Serverless Rewrites
+// Ensures both /config and /api/config match the /api routes
+app.use((req, _res, next) => {
+  if (!req.url.startsWith('/api') && (
+    req.url.startsWith('/config') ||
+    req.url.startsWith('/orders') ||
+    req.url.startsWith('/webhook') ||
+    req.url.startsWith('/download') ||
+    req.url.startsWith('/admin') ||
+    req.url.startsWith('/sandbox')
+  )) {
+    req.url = '/api' + req.url;
+  }
+  next();
+});
 
 // Capture raw body for webhook verification
 app.use(express.json({
@@ -474,8 +489,9 @@ app.post('/api/admin/settings', requireAdmin, (req: Request, res: Response) => {
 // -------------------------------------------------------------
 
 async function startServer() {
-  if (!isProduction) {
-    // In dev: Create Vite server in middleware mode
+  if (!isProduction && process.env.VERCEL !== '1') {
+    // Dynamic import prevents bundling Vite in production serverless environments
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'
@@ -484,10 +500,12 @@ async function startServer() {
   } else {
     // In production: Serve dist directory
     const distPath = path.resolve('dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (_req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
   }
 
   app.listen(PORT, '0.0.0.0', () => {

@@ -43,13 +43,18 @@ export interface Order {
   isSandbox: boolean;
 }
 
-const DATA_DIR = path.resolve('data');
+const isServerless = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DATA_DIR = isServerless ? path.join('/tmp', 'nexora_data') : path.resolve('data');
 const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
-// Ensure directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+// Ensure directory exists safely without throwing in read-only environments
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch {
+  // Gracefully ignored in read-only environments; in-memory cache is used
 }
 
 export interface AppSettings {
@@ -66,8 +71,14 @@ let settingsCache: AppSettings = {
 
 function loadSettings(): void {
   try {
-    if (fs.existsSync(SETTINGS_FILE)) {
-      const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
+    const candidateFile = fs.existsSync(SETTINGS_FILE)
+      ? SETTINGS_FILE
+      : fs.existsSync(path.resolve('data/settings.json'))
+      ? path.resolve('data/settings.json')
+      : null;
+
+    if (candidateFile && fs.existsSync(candidateFile)) {
+      const data = fs.readFileSync(candidateFile, 'utf8');
       const loaded = JSON.parse(data);
       if (typeof loaded.price === 'number' && loaded.price > 0) {
         settingsCache.price = loaded.price;
@@ -84,17 +95,18 @@ function loadSettings(): void {
       saveSettings();
     }
   } catch (err) {
-    console.error('Failed to load settings from disk:', err);
+    console.warn('Notice loading settings from disk:', err);
   }
 }
 
 function saveSettings(): void {
   try {
-    const tempFile = `${SETTINGS_FILE}.tmp.${Date.now()}`;
-    fs.writeFileSync(tempFile, JSON.stringify(settingsCache, null, 2), 'utf8');
-    fs.renameSync(tempFile, SETTINGS_FILE);
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settingsCache, null, 2), 'utf8');
   } catch (err) {
-    console.error('Failed to save settings to disk:', err);
+    console.warn('Notice saving settings to disk (using in-memory cache):', err);
   }
 }
 
@@ -103,8 +115,14 @@ let ordersCache: Map<string, Order> = new Map();
 
 function loadOrders(): void {
   try {
-    if (fs.existsSync(ORDERS_FILE)) {
-      const data = fs.readFileSync(ORDERS_FILE, 'utf8');
+    const candidateFile = fs.existsSync(ORDERS_FILE)
+      ? ORDERS_FILE
+      : fs.existsSync(path.resolve('data/orders.json'))
+      ? path.resolve('data/orders.json')
+      : null;
+
+    if (candidateFile && fs.existsSync(candidateFile)) {
+      const data = fs.readFileSync(candidateFile, 'utf8');
       const list: Order[] = JSON.parse(data);
       ordersCache.clear();
       for (const order of list) {
@@ -112,18 +130,19 @@ function loadOrders(): void {
       }
     }
   } catch (err) {
-    console.error('Failed to load orders from disk:', err);
+    console.warn('Notice loading orders from disk:', err);
   }
 }
 
 function saveOrders(): void {
   try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
     const list = Array.from(ordersCache.values());
-    const tempFile = `${ORDERS_FILE}.tmp.${Date.now()}`;
-    fs.writeFileSync(tempFile, JSON.stringify(list, null, 2), 'utf8');
-    fs.renameSync(tempFile, ORDERS_FILE);
+    fs.writeFileSync(ORDERS_FILE, JSON.stringify(list, null, 2), 'utf8');
   } catch (err) {
-    console.error('Failed to save orders to disk:', err);
+    console.warn('Notice saving orders to disk (using in-memory cache):', err);
   }
 }
 
