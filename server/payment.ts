@@ -31,38 +31,64 @@ export const paymentService = {
     // Check if we can make a live call to FamGateway
     if (!isSandbox && CONFIG.FAMGATEWAY_API_KEY) {
       try {
+        const apiKey = CONFIG.FAMGATEWAY_API_KEY;
         const payload = {
+          api_key: apiKey,
           amount: expectedAmount,
           customer_name: order.customerName,
           customer_email: order.customerEmail,
           customer_mobile: order.customerPhone,
+          order_id: order.orderId,
           custom_id: order.orderId,
           redirect_url: `${appUrl}/?order_id=${order.orderId}&view=status`,
-          webhook_url: `${appUrl}/api/webhook/famgateway`
+          webhook_url: `${appUrl}/api/webhook/famgateway`,
+          remark: `Ebook Purchase: ${order.orderId}`
         };
 
-        const res = await fetch(`${CONFIG.FAMGATEWAY_BASE_URL}/api/create-order`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Api-Key': CONFIG.FAMGATEWAY_API_KEY
-          },
-          body: JSON.stringify(payload)
-        });
+        // Try primary API endpoint, then fallback to .php endpoint
+        const endpoints = [
+          `${CONFIG.FAMGATEWAY_BASE_URL}/api/create-order`,
+          `${CONFIG.FAMGATEWAY_BASE_URL}/api/create-order.php`
+        ];
 
-        if (res.ok) {
+        let res: any = null;
+        for (const ep of endpoints) {
+          try {
+            const candidate = await fetch(ep, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Api-Key': apiKey,
+                'User-Agent': 'Nexora-Ebook-Client/2.0'
+              },
+              body: JSON.stringify(payload),
+              signal: AbortSignal.timeout(6000)
+            });
+            if (candidate.ok) {
+              res = candidate;
+              break;
+            }
+          } catch {
+            // try next endpoint
+          }
+        }
+
+        if (res && res.ok) {
           const raw = await res.json();
           const info = raw.data || raw;
           
-          const gatewayOrderId = info.order_id || raw.order_id || `FAM-${Date.now()}`;
+          const gatewayOrderId = info.order_id || raw.order_id || info.id || `FAM-${Date.now()}`;
           const checkoutUrl = info.checkout_url || raw.checkout_url || info.payment_url;
-          const qrUrl = info.qr_url || raw.qr_url;
-          const upiUri = info.upi_intent || info.upi_url || raw.upi_intent;
-          const upiId = info.upi_id || '7380673813@fam';
+          const qrUrl = info.qr_url || raw.qr_url || info.qr_code;
+          const upiUri = info.upi_intent || info.upi_url || raw.upi_intent || info.upi_uri;
+          const upiId = info.upi_id || raw.upi_id || info.vpa || '';
 
           let qrData = qrUrl || '';
           if (upiUri) {
             qrData = await QRCode.toDataURL(upiUri, { margin: 1, width: 340 });
+          } else if (qrUrl && !qrUrl.startsWith('http') && qrUrl.startsWith('data:image')) {
+            qrData = qrUrl;
           }
 
           db.updateOrder(order.orderId, {
@@ -88,7 +114,7 @@ export const paymentService = {
             isSandbox: false,
             expiresInMinutes: 5
           };
-        } else {
+        } else if (res) {
           console.warn('FamGateway create-order non-200 response:', res.status, await res.text());
         }
       } catch (err) {
@@ -99,8 +125,8 @@ export const paymentService = {
     // Fallback or Sandbox Mode:
     // Generate standard UPI Intent URI and QR code
     // Using merchant handle or developer test handle
-    const payeeVpa = 'famapp@upi'; // Default FamApp merchant handle
-    const payeeName = '100 Mini Projects AI';
+    const payeeVpa = CONFIG.MERCHANT_UPI_ID;
+    const payeeName = 'NEXORA AESTHETIC MART';
     const upiUri = `upi://pay?pa=${encodeURIComponent(payeeVpa)}&pn=${encodeURIComponent(payeeName)}&am=${expectedAmount.toFixed(2)}&cu=INR&tr=${order.orderId}&tn=${encodeURIComponent(`Order ${order.orderId}`)}`;
     
     // Generate QR code base64 image data URL
@@ -128,6 +154,7 @@ export const paymentService = {
       status: 'PENDING',
       qrData,
       upiUri,
+      upiId: payeeVpa,
       gatewayOrderId,
       isSandbox: true,
       expiresInMinutes: 10
@@ -148,85 +175,130 @@ export const paymentService = {
       return { success: true, order };
     }
 
-    // If sandbox mode, check if manually simulated
-    if (order.isSandbox) {
+    // If pure sandbox without API key and without gateway ID, check if manually simulated
+    if (order.isSandbox && !order.gatewayOrderId && !CONFIG.FAMGATEWAY_API_KEY) {
       return { success: false, order, error: 'Payment is pending (Sandbox)' };
     }
 
     // Live FamGateway verification
-    if (CONFIG.FAMGATEWAY_API_KEY && order.gatewayOrderId) {
+    if (CONFIG.FAMGATEWAY_API_KEY && (order.gatewayOrderId || order.orderId)) {
       try {
-        // FamGateway verify-order endpoint requires api_key as query parameter
-        const verifyUrl = `${CONFIG.FAMGATEWAY_BASE_URL}/api/verify-order.php?api_key=${encodeURIComponent(CONFIG.FAMGATEWAY_API_KEY)}&order_id=${encodeURIComponent(order.gatewayOrderId)}`;
-        const res = await fetch(verifyUrl, {
-          headers: {
-            'X-Api-Key': CONFIG.FAMGATEWAY_API_KEY
-          }
-        });
+        const apiKey = CONFIG.FAMGATEWAY_API_KEY;
+        const targetIds = [order.gatewayOrderId, order.orderId].filter(Boolean) as string[];
 
-        if (res.ok) {
-          const raw = await res.json();
-          const info = raw.data || raw;
-          
-          // FamGateway returns status: 'success' or 'pending' or 'expired', plus amount, utr
-          const isPaid = raw.status === 'success' || raw.payment_status === 'success' || info.status === 'success' || raw.success === true;
-          const paidAmount = parseFloat(info.amount || info.paid_amount || raw.amount || String(CONFIG.PRICE));
-
-          if (isPaid) {
-            // CRITICAL AMOUNT CHECK:
-            // verified amount must match or exceed order amount
-            const expectedAmount = order.amount || CONFIG.PRICE;
-            if (paidAmount < expectedAmount) {
-              console.error(`Amount mismatch: expected ${expectedAmount}, got ${paidAmount}`);
-              db.updateOrder(orderId, {
-                status: 'MANUAL_REVIEW',
-                paymentReference: info.utr || info.transaction_id || raw.utr,
-                verifiedAmount: paidAmount
-              });
-              return { success: false, error: 'Payment amount mismatch. Marked for manual review.' };
-            }
-
-            // Grant download token
-            const token = generateSecureToken();
-            const expiresAt = new Date(Date.now() + CONFIG.DOWNLOAD_TOKEN_EXPIRY_HOURS * 3600 * 1000).toISOString();
-
-            const updated = db.updateOrder(orderId, {
-              status: 'SUCCESS',
-              paymentReference: info.utr || info.transaction_id || raw.utr || `UTR-${Date.now()}`,
-              paymentVerifiedAt: new Date().toISOString(),
-              verifiedAmount: paidAmount || CONFIG.PRICE,
-              downloadToken: token,
-              downloadTokenExpiresAt: expiresAt
+        for (const checkId of targetIds) {
+          // 1. Check via verify-order.php
+          try {
+            const verifyUrl = `${CONFIG.FAMGATEWAY_BASE_URL}/api/verify-order.php?api_key=${encodeURIComponent(apiKey)}&order_id=${encodeURIComponent(checkId)}`;
+            const res = await fetch(verifyUrl, {
+              headers: {
+                'X-Api-Key': apiKey,
+                'User-Agent': 'Nexora-Ebook-Client/2.0'
+              },
+              signal: AbortSignal.timeout(3500)
             });
 
-            return { success: true, order: updated };
-          } else if (raw.status === 'expired') {
-            db.updateOrder(orderId, { status: 'EXPIRED' });
-            return { success: false, error: 'Payment session expired' };
-          }
-        }
+            if (res.ok) {
+              const raw = await res.json();
+              const info = raw.data || raw;
+              
+              const isPaid = raw.status === 'success' || raw.payment_status === 'success' || info.status === 'success' || raw.success === true;
+              const paidAmount = parseFloat(info.amount || info.paid_amount || raw.amount || String(CONFIG.PRICE));
 
-        // Secondary fallback check: checkout-status.php
-        try {
-          const statusCheckUrl = `${CONFIG.FAMGATEWAY_BASE_URL}/api/checkout-status.php?order_id=${encodeURIComponent(order.gatewayOrderId)}`;
-          const statusRes = await fetch(statusCheckUrl);
-          if (statusRes.ok) {
-            const statusData = await statusRes.json();
-            if (statusData.status === 'success') {
-              const token = generateSecureToken();
-              const expiresAt = new Date(Date.now() + CONFIG.DOWNLOAD_TOKEN_EXPIRY_HOURS * 3600 * 1000).toISOString();
-              const updated = db.updateOrder(orderId, {
-                status: 'SUCCESS',
-                paymentReference: statusData.utr || `UTR-${Date.now()}`,
-                paymentVerifiedAt: new Date().toISOString(),
-                verifiedAmount: CONFIG.PRICE,
-                downloadToken: token,
-                downloadTokenExpiresAt: expiresAt
-              });
-              return { success: true, order: updated };
+              if (isPaid) {
+                const expectedAmount = order.amount || CONFIG.PRICE;
+                if (paidAmount < expectedAmount) {
+                  console.error(`Amount mismatch: expected ${expectedAmount}, got ${paidAmount}`);
+                  db.updateOrder(orderId, {
+                    status: 'MANUAL_REVIEW',
+                    paymentReference: info.utr || info.transaction_id || raw.utr,
+                    verifiedAmount: paidAmount
+                  });
+                  return { success: false, error: 'Payment amount mismatch. Marked for manual review.' };
+                }
+
+                const token = generateSecureToken();
+                const expiresAt = new Date(Date.now() + CONFIG.DOWNLOAD_TOKEN_EXPIRY_HOURS * 3600 * 1000).toISOString();
+
+                const updated = db.updateOrder(orderId, {
+                  status: 'SUCCESS',
+                  paymentReference: info.utr || info.transaction_id || raw.utr || `UTR-${Date.now()}`,
+                  paymentVerifiedAt: new Date().toISOString(),
+                  verifiedAmount: paidAmount || CONFIG.PRICE,
+                  downloadToken: token,
+                  downloadTokenExpiresAt: expiresAt
+                });
+
+                return { success: true, order: updated };
+              } else if (raw.status === 'expired') {
+                db.updateOrder(orderId, { status: 'EXPIRED' });
+                return { success: false, error: 'Payment session expired' };
+              }
             }
-          }
-        } catch {}
+          } catch {}
+
+          // 2. Check via check-order-status.php (POST JSON)
+          try {
+            const checkStatusUrl = `${CONFIG.FAMGATEWAY_BASE_URL}/api/check-order-status.php`;
+            const checkRes = await fetch(checkStatusUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Api-Key': apiKey,
+                'User-Agent': 'Nexora-Ebook-Client/2.0'
+              },
+              body: JSON.stringify({ api_key: apiKey, order_id: checkId }),
+              signal: AbortSignal.timeout(3500)
+            });
+
+            if (checkRes.ok) {
+              const checkData = await checkRes.json();
+              const checkInfo = checkData.data || checkData;
+              const isPaid =
+                checkData.status === 'success' ||
+                checkData.status === 'SUCCESS' ||
+                checkInfo.status === 'success' ||
+                checkInfo.status === 'SUCCESS' ||
+                checkData.paid === true;
+
+              if (isPaid) {
+                const token = generateSecureToken();
+                const expiresAt = new Date(Date.now() + CONFIG.DOWNLOAD_TOKEN_EXPIRY_HOURS * 3600 * 1000).toISOString();
+                const updated = db.updateOrder(orderId, {
+                  status: 'SUCCESS',
+                  paymentReference: checkInfo.utr || checkData.utr || checkInfo.transaction_id || `UTR-${Date.now()}`,
+                  paymentVerifiedAt: new Date().toISOString(),
+                  verifiedAmount: order.amount || CONFIG.PRICE,
+                  downloadToken: token,
+                  downloadTokenExpiresAt: expiresAt
+                });
+                return { success: true, order: updated };
+              }
+            }
+          } catch {}
+
+          // 3. Fallback check: checkout-status.php
+          try {
+            const statusCheckUrl = `${CONFIG.FAMGATEWAY_BASE_URL}/api/checkout-status.php?order_id=${encodeURIComponent(checkId)}`;
+            const statusRes = await fetch(statusCheckUrl);
+            if (statusRes.ok) {
+              const statusData = await statusRes.json();
+              if (statusData.status === 'success' || statusData.status === 'SUCCESS') {
+                const token = generateSecureToken();
+                const expiresAt = new Date(Date.now() + CONFIG.DOWNLOAD_TOKEN_EXPIRY_HOURS * 3600 * 1000).toISOString();
+                const updated = db.updateOrder(orderId, {
+                  status: 'SUCCESS',
+                  paymentReference: statusData.utr || `UTR-${Date.now()}`,
+                  paymentVerifiedAt: new Date().toISOString(),
+                  verifiedAmount: CONFIG.PRICE,
+                  downloadToken: token,
+                  downloadTokenExpiresAt: expiresAt
+                });
+                return { success: true, order: updated };
+              }
+            }
+          } catch {}
+        }
       } catch (err) {
         console.error('Error verifying payment with FamGateway:', err);
       }

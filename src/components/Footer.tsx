@@ -1,17 +1,16 @@
 import React from 'react';
 import { BookOpen, ShieldCheck, Mail, ArrowUp } from 'lucide-react';
 import { EBOOK_META, EBOOK_PRICE, EBOOK_CURRENCY_SYMBOL } from '../config/ebookConfig.ts';
+import { Link } from '../context/RouterContext.tsx';
 
 interface FooterProps {
   onBuyClick: () => void;
-  onOpenAdmin: () => void;
   price?: number;
   currencySymbol?: string;
 }
 
 export const Footer: React.FC<FooterProps> = ({
   onBuyClick,
-  onOpenAdmin,
   price = EBOOK_PRICE,
   currencySymbol = EBOOK_CURRENCY_SYMBOL
 }) => {
@@ -26,17 +25,22 @@ export const Footer: React.FC<FooterProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-12 gap-10 pb-12 border-b border-slate-800">
           
           {/* Col 1: Brand & Info */}
-          <div className="md:col-span-6 space-y-4">
-            <div className="flex items-center gap-2.5 text-white">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">
-                <BookOpen className="w-4 h-4" />
-              </div>
-              <span className="font-bold text-base tracking-tight">
-                100 Mini Projects You Can Build With AI
+          <div className="md:col-span-5 space-y-4">
+            <Link to="/" className="flex items-center gap-2.5 text-white group">
+              <img
+                src="/logo.png"
+                alt="NEXORA AESTHETIC MART Logo"
+                className="w-8 h-8 object-contain rounded-lg bg-white/10 p-0.5 border border-white/20"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = 'https://lh3.googleusercontent.com/d/17T4S4IHGf926JS3R5JhwTL_bv1kGL4IT';
+                }}
+              />
+              <span className="font-bold text-base tracking-tight text-white group-hover:text-indigo-400 transition-colors">
+                NEXORA AESTHETIC MART
               </span>
-            </div>
+            </Link>
 
-            <p className="text-xs text-slate-400 max-w-md leading-relaxed">
+            <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
               From Beginner to Builder — A practical, build-it-today book for complete beginners, students, self-learners and developers curious about putting AI to work on real web projects.
             </p>
 
@@ -47,18 +51,29 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
           </div>
 
-          {/* Col 2: Navigation */}
-          <div className="md:col-span-3 space-y-3">
+          {/* Col 2: Navigation Pages */}
+          <div className="md:col-span-4 space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">
-              Quick Links
+              Explore Pages
             </h4>
-            <ul className="space-y-2 text-xs text-slate-400">
-              <li><a href="#hero" className="hover:text-white transition-colors">Home</a></li>
-              <li><a href="#whats-inside" className="hover:text-white transition-colors">What's Inside</a></li>
-              <li><a href="#projects" className="hover:text-white transition-colors">100 Project List</a></li>
-              <li><a href="#challenge" className="hover:text-white transition-colors">30-Day Plan</a></li>
-              <li><a href="#faq" className="hover:text-white transition-colors">FAQ</a></li>
-            </ul>
+            <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
+              <div>
+                <ul className="space-y-2">
+                  <li><Link to="/" className="hover:text-white transition-colors">Home</Link></li>
+                  <li><Link to="/whats-inside" className="hover:text-white transition-colors">What's Inside</Link></li>
+                  <li><Link to="/projects" className="hover:text-white transition-colors">100 Projects</Link></li>
+                  <li><Link to="/challenge" className="hover:text-white transition-colors">30-Day Plan</Link></li>
+                </ul>
+              </div>
+              <div>
+                <ul className="space-y-2">
+                  <li><Link to="/pricing" className="hover:text-white transition-colors">Pricing</Link></li>
+                  <li><Link to="/cheat-sheet" className="hover:text-white transition-colors">Prompt Cheat Sheet</Link></li>
+                  <li><Link to="/benefits" className="hover:text-white transition-colors">Why Build</Link></li>
+                  <li><Link to="/faq" className="hover:text-white transition-colors">FAQ</Link></li>
+                </ul>
+              </div>
+            </div>
           </div>
 
           {/* Col 3: Legal & Support */}
@@ -67,19 +82,13 @@ export const Footer: React.FC<FooterProps> = ({
               Security &amp; Legal
             </h4>
             <ul className="space-y-2 text-xs text-slate-400">
-              <li className="flex items-center gap-1.5">
+              <li><Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
+              <li><Link to="/terms" className="hover:text-white transition-colors">Terms of Service</Link></li>
+              <li><Link to="/refund" className="hover:text-white transition-colors">Refund &amp; Delivery</Link></li>
+              <li><Link to="/download" className="hover:text-white transition-colors">Lookup Order &amp; Download</Link></li>
+              <li className="flex items-center gap-1.5 pt-1 text-slate-400">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                 <span>FamGateway 256-bit UPI</span>
-              </li>
-              <li><span>Direct Digital PDF Delivery</span></li>
-              <li><span>For Educational &amp; Personal Use</span></li>
-              <li>
-                <button
-                  onClick={onOpenAdmin}
-                  className="text-slate-500 hover:text-slate-300 transition-colors text-left"
-                >
-                  Merchant / Admin Portal
-                </button>
               </li>
             </ul>
           </div>

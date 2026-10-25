@@ -4,6 +4,7 @@ import fs from 'fs';
 import { CONFIG } from './server/config.ts';
 import { db, generateOrderId, generateSecureToken } from './server/db.ts';
 import { paymentService } from './server/payment.ts';
+import { requireFirebaseAuth } from './server/firebaseAuth.ts';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -22,6 +23,14 @@ app.use((req, _res, next) => {
   )) {
     req.url = '/api' + req.url;
   }
+  next();
+});
+
+// Security & Performance Headers Middleware
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
   next();
 });
 
@@ -102,27 +111,25 @@ app.get('/api/config', (_req: Request, res: Response) => {
     isSandbox: CONFIG.SANDBOX_MODE,
     hasApiKey: Boolean(CONFIG.FAMGATEWAY_API_KEY),
     gatewayBaseUrl: CONFIG.FAMGATEWAY_BASE_URL,
-    supportEmail: CONFIG.SUPPORT_EMAIL
+    supportEmail: CONFIG.SUPPORT_EMAIL,
+    gdriveUrl: CONFIG.GDRIVE_EBOOK_URL
   });
 });
 
 // 2. Create Order & Initiate Payment
 app.post('/api/orders', async (req: Request, res: Response) => {
   try {
-    const { name, email, phone, couponCode } = req.body;
+    const { name, email, phone, couponCode } = req.body || {};
 
-    // Validate inputs
-    if (!name || typeof name !== 'string' || name.trim().length < 2) {
-      return res.status(400).json({ error: 'Please enter your full name (at least 2 characters).' });
-    }
+    // Customer details: If provided by customer/API use them, otherwise use clean defaults for instant 1-click checkout
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email || !emailRegex.test(email.trim())) {
-      return res.status(400).json({ error: 'Please enter a valid email address.' });
-    }
-    const cleanPhone = (phone || '').replace(/[^0-9+]/g, '');
-    if (!cleanPhone || cleanPhone.length < 8) {
-      return res.status(400).json({ error: 'Please enter a valid WhatsApp or phone number.' });
-    }
+    const customerName = (name && typeof name === 'string' && name.trim().length >= 2)
+      ? name.trim()
+      : 'Reader';
+    const customerEmail = (email && typeof email === 'string' && emailRegex.test(email.trim()))
+      ? email.trim().toLowerCase()
+      : 'reader@digital-books.store';
+    const cleanPhone = (phone ? String(phone).replace(/[^0-9+]/g, '') : '') || '9876543210';
 
     // SERVER-AUTHORITATIVE PRICE: Never trust any price from the browser
     const amount = CONFIG.PRICE;
@@ -136,8 +143,8 @@ app.post('/api/orders', async (req: Request, res: Response) => {
     // Create Order Record (Status: PENDING)
     const order = db.createOrder({
       orderId,
-      customerName: name.trim(),
-      customerEmail: email.trim().toLowerCase(),
+      customerName,
+      customerEmail,
       customerPhone: cleanPhone,
       couponCode: couponCode ? String(couponCode).trim() : undefined,
       productTitle: CONFIG.PRODUCT_TITLE,
@@ -180,8 +187,8 @@ app.get('/api/orders/:orderId', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Order not found.' });
     }
 
-    // If order is still pending, attempt server verification if live
-    if (order.status === 'PENDING' && !order.isSandbox) {
+    // If order is still pending, attempt active server verification with FamGateway
+    if (order.status === 'PENDING') {
       const verifyRes = await paymentService.verifyOrderPayment(orderId);
       if (verifyRes.success && verifyRes.order) {
         order = verifyRes.order;
@@ -312,24 +319,25 @@ app.get('/api/download/:token', (req: Request, res: Response) => {
     }
 
     const pdfPath = path.resolve('server/storage/ebook-100-mini-projects.pdf');
-    if (!fs.existsSync(pdfPath)) {
-      return res.status(500).send('Ebook file is temporarily unavailable. Please contact support.');
+    if (fs.existsSync(pdfPath)) {
+      // Increment download count and record time
+      db.updateOrder(order.orderId, {
+        downloadCount: order.downloadCount + 1,
+        lastDownloadedAt: new Date().toISOString()
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="100-Mini-Projects-You-Can-Build-With-AI.pdf"');
+      
+      const fileStream = fs.createReadStream(pdfPath);
+      fileStream.pipe(res);
+    } else {
+      // Direct high-speed download via Google Drive
+      return res.redirect(CONFIG.GDRIVE_DIRECT_DOWNLOAD_URL);
     }
-
-    // Increment download count and record time
-    db.updateOrder(order.orderId, {
-      downloadCount: order.downloadCount + 1,
-      lastDownloadedAt: new Date().toISOString()
-    });
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="100-Mini-Projects-You-Can-Build-With-AI.pdf"');
-    
-    const fileStream = fs.createReadStream(pdfPath);
-    fileStream.pipe(res);
   } catch (err) {
     console.error('Download delivery error:', err);
-    res.status(500).send('Internal server error during download.');
+    return res.redirect(CONFIG.GDRIVE_EBOOK_URL);
   }
 });
 
@@ -337,7 +345,15 @@ app.get('/api/download/:token', (req: Request, res: Response) => {
 // ADMIN DASHBOARD API (Protected with Server-Side Secret)
 // -------------------------------------------------------------
 
-// Admin Login
+// Verify Active Firebase Admin Session
+app.get('/api/admin/me', requireFirebaseAuth, (req: Request, res: Response) => {
+  res.json({
+    authorized: true,
+    user: req.adminUser
+  });
+});
+
+// Admin Login (Fallback CLI / developer key)
 app.post('/api/admin/login', (req: Request, res: Response) => {
   const { secretKey } = req.body;
   if (!secretKey || secretKey !== CONFIG.ADMIN_SECRET_KEY) {
@@ -353,8 +369,8 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
   });
 });
 
-// Get Admin Stats and Order List
-app.get('/api/admin/orders', requireAdmin, (_req: Request, res: Response) => {
+// Get Admin Stats and Order List (Strictly Protected with Firebase Auth)
+app.get('/api/admin/orders', requireFirebaseAuth, (_req: Request, res: Response) => {
   const stats = db.getStats();
   const orders = db.listOrders();
   res.json({
@@ -365,14 +381,13 @@ app.get('/api/admin/orders', requireAdmin, (_req: Request, res: Response) => {
       originalPrice: CONFIG.ORIGINAL_PRICE,
       isSandbox: CONFIG.SANDBOX_MODE,
       gatewayBaseUrl: CONFIG.FAMGATEWAY_BASE_URL,
-      hasApiKey: Boolean(CONFIG.FAMGATEWAY_API_KEY),
-      adminSecretKey: CONFIG.ADMIN_SECRET_KEY
+      hasApiKey: Boolean(CONFIG.FAMGATEWAY_API_KEY)
     }
   });
 });
 
-// Admin Update Ebook Price
-app.post('/api/admin/price', requireAdmin, (req: Request, res: Response) => {
+// Admin Update Ebook Price (Strictly Protected with Firebase Auth)
+app.post('/api/admin/price', requireFirebaseAuth, (req: Request, res: Response) => {
   const { price, originalPrice } = req.body;
   const parsedPrice = parseInt(String(price), 10);
   if (isNaN(parsedPrice) || parsedPrice <= 0) {
@@ -400,24 +415,8 @@ app.post('/api/admin/price', requireAdmin, (req: Request, res: Response) => {
   });
 });
 
-// Admin Update Password
-app.post('/api/admin/password', requireAdmin, (req: Request, res: Response) => {
-  const { newPassword } = req.body;
-  if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 4) {
-    return res.status(400).json({ error: 'New password must be at least 4 characters long.' });
-  }
-
-  CONFIG.ADMIN_SECRET_KEY = newPassword.trim();
-  console.log(`[Admin] Admin password updated successfully.`);
-
-  res.json({
-    success: true,
-    message: 'Admin password successfully updated.'
-  });
-});
-
 // Admin Order Action (Renew token, Manual verify, Refund)
-app.post('/api/admin/orders/:orderId/action', requireAdmin, (req: Request, res: Response) => {
+app.post('/api/admin/orders/:orderId/action', requireFirebaseAuth, (req: Request, res: Response) => {
   const { orderId } = req.params;
   const { action, utr } = req.body;
 
@@ -458,9 +457,9 @@ app.post('/api/admin/orders/:orderId/action', requireAdmin, (req: Request, res: 
   res.status(400).json({ error: 'Unknown action' });
 });
 
-// Admin Update Settings (Sandbox mode, Price, Password)
-app.post('/api/admin/settings', requireAdmin, (req: Request, res: Response) => {
-  const { sandboxMode, price, originalPrice, adminSecretKey } = req.body;
+// Admin Update Settings (Sandbox mode, Price)
+app.post('/api/admin/settings', requireFirebaseAuth, (req: Request, res: Response) => {
+  const { sandboxMode, price, originalPrice } = req.body;
 
   if (typeof sandboxMode === 'boolean') {
     CONFIG.SANDBOX_MODE = sandboxMode;
@@ -470,9 +469,6 @@ app.post('/api/admin/settings', requireAdmin, (req: Request, res: Response) => {
   }
   if (typeof originalPrice === 'number' && originalPrice > 0) {
     CONFIG.ORIGINAL_PRICE = Math.round(originalPrice);
-  }
-  if (typeof adminSecretKey === 'string' && adminSecretKey.trim().length >= 4) {
-    CONFIG.ADMIN_SECRET_KEY = adminSecretKey.trim();
   }
 
   res.json({

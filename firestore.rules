@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default-deny all unhandled collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Server-verified administrator helper: checks admins collection or root admin email
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email == 'kirankushwaha616@gmail.com' && request.auth.token.email_verified == true)
+      );
+    }
+
+    // Administrators registry
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && (request.auth.uid == adminId || isAdmin());
+      allow list: if isAdmin();
+      allow write: if false; // Managed exclusively via secure backend or console
+    }
+
+    // Purchase orders - strictly readable ONLY by authorized administrators
+    // Direct writes from web clients are completely blocked to prevent client-side price/status tampering
+    match /orders/{orderId} {
+      allow get, list: if isAdmin();
+      allow write: if false; // All order creation and status changes flow through verified FamGateway server webhooks
+    }
+  }
+}

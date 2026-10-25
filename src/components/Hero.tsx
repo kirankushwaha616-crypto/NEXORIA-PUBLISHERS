@@ -24,10 +24,10 @@ export const Hero: React.FC<HeroProps> = ({
   return (
     <section id="hero" className="relative pt-12 pb-20 md:pt-16 md:pb-28 overflow-hidden bg-gradient-to-b from-slate-50 via-white to-slate-50 border-b border-slate-200">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-8 items-center">
           
-          {/* Left Column: Authentic Copy */}
-          <div className="lg:col-span-7 flex flex-col items-start text-left">
+          {/* Authentic Copy (Shown below cover on mobile, left on desktop) */}
+          <div className="order-2 lg:order-1 lg:col-span-7 flex flex-col items-start text-left">
             {/* Quiet metadata line without pills */}
             <div className="flex items-center gap-2 text-xs font-semibold text-indigo-600 mb-4 tracking-wide uppercase">
               <span>Official Digital Ebook</span>
@@ -113,29 +113,42 @@ export const Hero: React.FC<HeroProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Genuine Cover Image Showcase */}
-          <div className="lg:col-span-5 flex justify-center">
-            <div className="relative w-full max-w-[340px] sm:max-w-[380px] group">
-              {/* Soft decorative shadow backdrop */}
-              <div className="absolute -inset-4 bg-gradient-to-tr from-indigo-500/20 via-sky-400/20 to-purple-500/10 rounded-2xl filter blur-xl opacity-70 group-hover:opacity-100 transition duration-500" />
+          {/* Cover Image Showcase (Order 1 on Mobile: Shown FIRST on phones) */}
+          <div className="order-1 lg:order-2 lg:col-span-5 flex justify-center mb-6 lg:mb-0">
+            <div className="relative w-full max-w-[300px] sm:max-w-[350px] lg:max-w-[390px] group flex flex-col items-center">
               
-              {/* Ebook Card Wrapper */}
-              <div className="relative bg-white p-3 rounded-2xl shadow-2xl border border-slate-200/80 transition-transform duration-300 group-hover:-translate-y-1">
+              {/* Soft atmospheric gradient glow behind the 3D book */}
+              <div className="absolute -inset-6 bg-gradient-to-tr from-blue-600/20 via-indigo-500/20 to-purple-500/10 rounded-full filter blur-2xl opacity-75 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+              
+              {/* 3D Realistic Floating Book Container */}
+              <div className="relative z-10 w-full flex justify-center">
                 <img
                   src={EBOOK_META.coverImage}
-                  alt="100 Mini Projects You Can Build With AI - Ebook Cover"
-                  className="w-full h-auto aspect-[3/4] object-cover rounded-xl shadow-inner border border-slate-100"
+                  alt="100 Mini Projects You Can Build With AI - 3D Ebook Edition"
+                  className="w-full h-auto max-h-[460px] object-contain drop-shadow-[0_20px_25px_rgba(15,23,42,0.30)] group-hover:drop-shadow-[0_30px_35px_rgba(37,99,235,0.35)] transition-all duration-500 ease-out group-hover:-translate-y-2 group-hover:scale-[1.02]"
                   referrerPolicy="no-referrer"
                   loading="eager"
+                  decoding="async"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = 'https://lh3.googleusercontent.com/d/1chKM1M4Lqb84SUvxNsKDBX7pjULCp84J';
+                  }}
                 />
-
-                <div className="mt-3.5 px-2 flex items-center justify-between text-xs text-slate-500">
-                  <span className="font-medium text-slate-700">Digital PDF · 235 Pages</span>
-                  <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                    <Download className="w-3.5 h-3.5" /> Instant Delivery
-                  </span>
-                </div>
               </div>
+
+              {/* Realistic Ground Shadow Oval */}
+              <div className="w-3/4 h-4 bg-slate-900/15 rounded-[100%] blur-md mt-2 group-hover:scale-90 group-hover:opacity-60 transition-all duration-500" />
+
+              {/* Floating Ebook Badges Card */}
+              <div className="mt-4 w-full bg-white/95 backdrop-blur-sm px-4 py-2.5 rounded-2xl border border-slate-200/90 shadow-sm flex items-center justify-between text-xs text-slate-600">
+                <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                  Digital PDF · 235 Pages
+                </span>
+                <span className="text-emerald-700 font-bold flex items-center gap-1">
+                  <Download className="w-3.5 h-3.5" /> Instant Access
+                </span>
+              </div>
+
             </div>
           </div>
 

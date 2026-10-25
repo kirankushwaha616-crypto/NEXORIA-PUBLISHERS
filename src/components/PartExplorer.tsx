@@ -163,6 +163,22 @@ export const PartExplorer: React.FC<PartExplorerProps> = ({ onSelectSample }) =>
           </div>
         )}
 
+        <div className="mt-8 text-center">
+          <a
+            href="/projects"
+            onClick={(e) => {
+              e.preventDefault();
+              window.history.pushState({}, '', '/projects');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-300 hover:border-indigo-500 hover:text-indigo-600 rounded-xl text-xs font-bold text-slate-700 shadow-2xs transition-all cursor-pointer"
+          >
+            <span>Open Dedicated 100 Projects Directory</span>
+            <ChevronRight className="w-4 h-4" />
+          </a>
+        </div>
+
       </div>
     </section>
   );

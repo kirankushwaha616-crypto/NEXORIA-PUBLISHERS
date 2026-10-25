@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Copy, Check, Terminal, Code, Sparkles, BookOpen, Flag } from 'lucide-react';
 import { SAMPLE_PROJECTS } from '../data/bookData.ts';
+import { EBOOK_CURRENCY_SYMBOL, EBOOK_PRICE } from '../config/ebookConfig.ts';
 
 interface SamplePreviewModalProps {
   projectId: number | null;
@@ -212,7 +213,7 @@ export const SamplePreviewModal: React.FC<SamplePreviewModalProps> = ({
               }}
               className="flex-1 sm:flex-none px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
             >
-              Get Complete Ebook (₹29)
+              Get Complete Ebook ({EBOOK_CURRENCY_SYMBOL}{EBOOK_PRICE})
             </button>
           </div>
         </div>

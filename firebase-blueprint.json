@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "admin": {
+      "title": "Admin",
+      "description": "Authorized administrators with store management access",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address of the administrator"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "superadmin"],
+          "description": "Role of the administrator"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["email", "role"]
+    },
+    "order": {
+      "title": "Order",
+      "description": "Ebook customer purchase order records",
+      "type": "object",
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "description": "Unique order identifier"
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Customer full name"
+        },
+        "customerEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Customer email"
+        },
+        "customerPhone": {
+          "type": "string",
+          "description": "Customer WhatsApp/phone number"
+        },
+        "amount": {
+          "type": "number",
+          "description": "Order amount in INR"
+        },
+        "currency": {
+          "type": "string",
+          "description": "Currency code"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PENDING", "PAYMENT_PROCESSING", "SUCCESS", "FAILED", "EXPIRED", "REFUNDED", "MANUAL_REVIEW"],
+          "description": "Payment and order fulfillment status"
+        },
+        "paymentReference": {
+          "type": "string",
+          "description": "Bank UTR or FamGateway payment ID"
+        },
+        "downloadCount": {
+          "type": "number",
+          "description": "Number of times the ebook has been downloaded"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp of order creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of last update"
+        }
+      },
+      "required": ["orderId", "amount", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{adminId}": {
+      "schema": "admin",
+      "description": "Collection of verified administrator records"
+    },
+    "/orders/{orderId}": {
+      "schema": "order",
+      "description": "Protected orders collection accessible only by authorized administrators"
+    }
+  }
+}

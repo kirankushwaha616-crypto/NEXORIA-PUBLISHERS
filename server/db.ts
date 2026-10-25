@@ -64,7 +64,7 @@ export interface AppSettings {
 }
 
 let settingsCache: AppSettings = {
-  price: parseInt(process.env.EBOOK_PRICE || '29', 10),
+  price: parseInt(process.env.EBOOK_PRICE || '19', 10),
   originalPrice: parseInt(process.env.EBOOK_ORIGINAL_PRICE || '299', 10),
   adminSecretKey: process.env.ADMIN_SECRET_KEY || 'admin2026'
 };
@@ -105,6 +105,15 @@ function saveSettings(): void {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settingsCache, null, 2), 'utf8');
+    const localFile = path.resolve('data/settings.json');
+    if (SETTINGS_FILE !== localFile) {
+      try {
+        if (!fs.existsSync(path.resolve('data'))) {
+          fs.mkdirSync(path.resolve('data'), { recursive: true });
+        }
+        fs.writeFileSync(localFile, JSON.stringify(settingsCache, null, 2), 'utf8');
+      } catch {}
+    }
   } catch (err) {
     console.warn('Notice saving settings to disk (using in-memory cache):', err);
   }
@@ -236,6 +245,7 @@ export const db = {
   },
 
   getSettings(): AppSettings {
+    loadSettings();
     return { ...settingsCache };
   },
 

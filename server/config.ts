@@ -2,6 +2,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { db } from './db.ts';
 
+let runtimeSandboxOverride: boolean | null = null;
+
 export const CONFIG = {
   // Authoritative Ebook Product Details
   PRODUCT_ID: 'ebook_100_mini_projects',
@@ -27,8 +29,46 @@ export const CONFIG = {
   CURRENCY_SYMBOL: '₹',
 
   // FamGateway API Configuration (server-side only, NEVER sent to client)
-  FAMGATEWAY_API_KEY: process.env.FAMGATEWAY_API_KEY || 'fam_7410279d16badc49ee26980cbd680bcd3079a141',
-  FAMGATEWAY_BASE_URL: process.env.FAMGATEWAY_BASE_URL || 'https://famgateway.in',
+  get FAMGATEWAY_API_KEY(): string {
+    let rawKey =
+      process.env.FAMGATEWAY_API_KEY ||
+      process.env.FAM_GATEWAY_API_KEY ||
+      process.env.FAMGATEWAY_KEY ||
+      process.env.FAM_GATEWAY_KEY ||
+      process.env.FAMEGATEWAY_API_KEY ||
+      process.env.FAME_GATEWAY_API_KEY ||
+      process.env.FAMEGATEWAY_KEY ||
+      process.env.FAME_GATEWAY_KEY ||
+      process.env.FAMGATEWAY_TOKEN ||
+      process.env.FAM_GATEWAY_TOKEN ||
+      process.env.FAMEGATEWAY_TOKEN ||
+      process.env.FAME_GATEWAY_TOKEN ||
+      '';
+
+    if (!rawKey) {
+      for (const [key, val] of Object.entries(process.env)) {
+        if (/^(fam|fame).*gateway.*(key|token|api)$/i.test(key) || /^gateway.*(key|token|api)$/i.test(key)) {
+          if (val && typeof val === 'string' && val.trim().length > 5) {
+            rawKey = val;
+            break;
+          }
+        }
+      }
+    }
+
+    const cleaned = rawKey.replace(/^["']|["']$/g, '').trim();
+    return cleaned || 'fam_7410279d16badc49ee26980cbd680bcd3079a141';
+  },
+
+  get FAMGATEWAY_BASE_URL(): string {
+    const rawUrl = process.env.FAMGATEWAY_BASE_URL || 'https://famgateway.in';
+    return rawUrl.trim().replace(/\/+$/, '');
+  },
+
+  get MERCHANT_UPI_ID(): string {
+    const raw = process.env.MERCHANT_UPI_ID || process.env.UPI_ID || process.env.PAYEE_UPI || '';
+    return raw.trim() || 'ashishkk@fam';
+  },
   
   // Admin Dashboard Secret (persisted in DB/settings.json, with env fallback)
   get ADMIN_SECRET_KEY(): string {
@@ -39,9 +79,17 @@ export const CONFIG = {
   },
 
   // Sandbox / Test Mode
-  // When FamGateway API Key is present, live mode is active.
-  // Sandbox mode can only be enabled if explicitly requested via ENABLE_SANDBOX=true or if API key is missing.
-  SANDBOX_MODE: process.env.ENABLE_SANDBOX === 'true' || !process.env.FAMGATEWAY_API_KEY,
+  // If user sets a FamGateway API Key, live mode is active by default.
+  get SANDBOX_MODE(): boolean {
+    if (runtimeSandboxOverride !== null) return runtimeSandboxOverride;
+    if (process.env.ENABLE_SANDBOX === 'true') return true;
+    const key = this.FAMGATEWAY_API_KEY;
+    // Live mode when a real key is present
+    return !key || key.length < 10;
+  },
+  set SANDBOX_MODE(val: boolean) {
+    runtimeSandboxOverride = Boolean(val);
+  },
 
   // Secure Delivery Token Validity (hours)
   DOWNLOAD_TOKEN_EXPIRY_HOURS: 48,
@@ -50,5 +98,9 @@ export const CONFIG = {
   APP_URL: process.env.APP_URL || 'http://localhost:3000',
 
   // Support / Contact email
-  SUPPORT_EMAIL: 'support@ebooks.local'
+  SUPPORT_EMAIL: 'support@ebooks.local',
+
+  // Google Drive Verified Ebook Access
+  GDRIVE_EBOOK_URL: 'https://drive.google.com/file/d/1lf3YJue6sx1257giWYZ-XFrj6ORU9qTI/view?usp=drivesdk',
+  GDRIVE_DIRECT_DOWNLOAD_URL: 'https://drive.google.com/uc?export=download&id=1lf3YJue6sx1257giWYZ-XFrj6ORU9qTI'
 };

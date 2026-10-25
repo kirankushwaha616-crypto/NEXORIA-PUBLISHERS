@@ -92,15 +92,32 @@ export const SuccessView: React.FC<SuccessViewProps> = ({ order, onBackToHome })
               </div>
             </div>
 
+            {/* Direct Instant PDF Download Button */}
             <button
               onClick={handleDownload}
               className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-sm sm:text-base rounded-xl shadow-md transition-all flex items-center justify-center gap-2.5 cursor-pointer"
             >
               <Download className="w-5 h-5" />
-              <span>{downloadStarted ? 'Downloading Ebook...' : 'Download Ebook (PDF)'}</span>
+              <span>{downloadStarted ? 'Downloading Ebook...' : 'Download Ebook (PDF · 235 Pages)'}</span>
             </button>
 
-            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+            {/* Google Drive Mirror Option */}
+            <div className="pt-1">
+              <a
+                href={EBOOK_META.gdriveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3 px-4 bg-white hover:bg-slate-50 border-2 border-indigo-200 hover:border-indigo-400 text-indigo-900 font-semibold text-xs sm:text-sm rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 group"
+              >
+                <ExternalLink className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+                <span>Open / Save in Google Drive</span>
+              </a>
+              <p className="text-center text-[11px] text-slate-500 mt-1.5">
+                Smooth instant access on phone, tablet, or desktop via Google Drive
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-indigo-100/80">
               <span className="flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
                 <span>Link valid for 48 hours</span>
